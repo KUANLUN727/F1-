@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Monza 2026 朝聖助手 Pro</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; -webkit-tap-highlight-color: transparent; }
+        .ferrari-red { background-color: #FF0000; }
+        .text-ferrari { color: #FF0000; }
+        .border-ferrari { border-color: #FF0000; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* 輕微的縮放動畫 */
+        .btn-press:active { transform: scale(0.95); }
+        .v-enter-active, .v-leave-active { transition: all 0.3s ease; }
+        .v-enter-from, .v-leave-to { opacity: 0; transform: translateY(-10px); }
+    </style>
+</head>
+<body>
+    <div id="app" class="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col shadow-xl overflow-hidden relative">
+        
+        <!-- Top Header -->
+        <header class="ferrari-red text-white p-6 pb-12 rounded-b-[40px] shadow-lg relative z-30">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h1 class="text-2xl font-black italic tracking-tighter">MONZA 2026</h1>
+                    <p class="text-[10px] opacity-70 uppercase font-bold tracking-[0.2em]">Scuderia Fan Tools</p>
+                </div>
+                
+                <!-- 重新排列的工具列: 方格旗 | 匯率 | 翻譯 -->
+                <div class="flex items-center gap-2">
+                    <!-- 1. 方格旗 (文件) -->
+                    <button @click="activeTab = 'docs'" class="btn-press w-9 h-9 rounded-full bg-white/20 flex items-center justify-center border border-white/30 hover:bg-white/40">
+                        <i class="fas fa-flag-checkered text-lg"></i>
+                    </button>
+
+                    <!-- 2. 匯率 (點選執行換算) -->
+                    <button @click="toggleCurrency" :class="showCurrency ? 'bg-white text-ferrari shadow-inner' : 'bg-white/20 text-white'" class="btn-press h-9 px-3 rounded-full flex items-center gap-2 border border-white/30 transition-all">
+                        <i class="fas fa-coins text-sm"></i>
+                        <span class="text-xs font-black">€1={{ exchangeRate }}</span>
+                    </button>
+
+                    <!-- 3. 翻譯 -->
+                    <button @click="toggleTranslate" :class="showTranslate ? 'bg-white text-ferrari shadow-inner' : 'bg-white/20 text-white'" class="btn-press w-9 h-9 rounded-full flex items-center justify-center border border-white/30 transition-all">
+                        <i class="fas fa-language text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 隱藏工具面板: 匯率換算 -->
+            <transition>
+                <div v-if="showCurrency" class="bg-white rounded-3xl p-5 shadow-2xl text-gray-800 mb-2 border border-gray-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-black text-ferrari uppercase italic tracking-widest">Currency Converter</span>
+                        <i @click="showCurrency = false" class="fas fa-times text-gray-300 cursor-pointer"></i>
+                    </div>
+                    <div class="flex items-center gap-3 bg-gray-100 p-4 rounded-2xl">
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 font-bold uppercase mb-1">Euro (EUR)</label>
+                            <input v-model="eurInput" type="number" class="w-full bg-transparent border-none p-0 font-black text-2xl focus:ring-0" placeholder="0">
+                        </div>
+                        <i class="fas fa-chevron-right text-gray-300"></i>
+                        <div class="flex-1 text-right">
+                            <label class="block text-[10px] text-gray-400 font-bold uppercase mb-1">Taiwan (TWD)</label>
+                            <div class="font-black text-2xl text-ferrari">≈ {{ (eurInput * exchangeRate).toFixed(0) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- 隱藏工具面板: 內建翻譯 -->
+            <transition>
+                <div v-if="showTranslate" class="bg-white rounded-3xl p-5 shadow-2xl text-gray-800 mb-2 border border-gray-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-black text-ferrari uppercase italic tracking-widest">Quick Translator</span>
+                        <i @click="showTranslate = false" class="fas fa-times text-gray-300 cursor-pointer"></i>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="relative">
+                            <input v-model="transInput" @keyup.enter="translateText" type="text" placeholder="輸入中文..." class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4 text-sm focus:ring-2 focus:ring-red-500 font-medium">
+                            <button @click="translateText" class="absolute right-2 top-2 bg-red-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg">
+                                <i v-if="!isTranslating" class="fas fa-paper-plane text-xs"></i>
+                                <i v-else class="fas fa-spinner animate-spin"></i>
+                            </button>
+                        </div>
+                        <div v-if="transResult" class="bg-red-50 p-5 rounded-2xl border border-red-100 relative overflow-hidden">
+                            <div class="text-[10px] text-red-400 font-black uppercase mb-1 italic">Italiano</div>
+                            <p class="text-gray-800 font-bold text-lg leading-snug">{{ transResult }}</p>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto px-4 -mt-8 no-scrollbar pb-32 z-10">
+            
+            <!-- Tab: 行程 -->
+            <div v-if="activeTab === 'itinerary'">
+                <div class="flex gap-3 overflow-x-auto no-scrollbar py-4 mb-2">
+                    <div v-for="date in allDates" :key="date" @click="selectedDate = date"
+                        :class="[ 'flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all shadow-md', selectedDate === date ? 'ferrari-red text-white scale-110 shadow-red-200' : 'bg-white text-gray-500' ]">
+                        <span class="text-[10px] uppercase font-bold">{{ formatDate(date, 'MMM') }}</span>
+                        <span class="text-xl font-black">{{ formatDate(date, 'DD') }}</span>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center px-1">
+                        <h2 class="font-black text-gray-800 text-lg italic uppercase tracking-tight">Today's Schedule</h2>
+                        <button @click="showAddModal = true" class="text-[10px] font-black bg-white border border-gray-100 text-ferrari px-3 py-1.5 rounded-full shadow-sm">+ ADD EVENT</button>
+                    </div>
+
+                    <div v-if="currentDayItems.length === 0" class="text-center py-16">
+                        <i class="fas fa-mug-hot text-gray-200 text-4xl mb-3"></i>
+                        <p class="text-gray-300 italic text-sm font-medium">今天沒有排定的賽程</p>
+                    </div>
+
+                    <div v-for="item in currentDayItems" :key="item.id" class="bg-white p-5 rounded-3xl shadow-sm flex gap-4 items-center border border-gray-100 hover:shadow-md transition-shadow">
+                        <div class="text-center min-w-[55px]">
+                            <span class="block font-black text-gray-800 text-lg">{{ item.time }}</span>
+                        </div>
+                        <div class="flex-1 border-l border-gray-50 pl-4">
+                            <h3 class="font-bold text-gray-800 text-md">{{ item.activity }}</h3>
+                            <div class="flex items-center text-[11px] text-gray-400 mt-1 font-medium">
+                                <i class="fas fa-map-marker-alt text-ferrari mr-1.5"></i>
+                                <span>{{ item.location }}</span>
+                            </div>
+                        </div>
+                        <a :href="'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(item.location)" target="_blank" class="w-11 h-11 rounded-2xl bg-gray-50 text-blue-500 flex items-center justify-center active:bg-blue-100 transition-colors">
+                            <i class="fas fa-location-arrow text-lg"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: 方格旗電子票夾 (Docs) -->
+            <div v-if="activeTab === 'docs'" class="pt-8">
+                <div class="flex justify-between items-center mb-6 px-1">
+                    <h2 class="font-black text-2xl italic tracking-tight"><i class="fas fa-flag-checkered text-ferrari mr-2"></i>TICKETS & DOCS</h2>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div v-for="(file, idx) in files" :key="idx" class="relative group">
+                        <div class="bg-white p-2 rounded-3xl shadow-md border border-gray-100 aspect-[3/4] overflow-hidden">
+                            <img v-if="file.type.includes('image')" :src="file.url" class="w-full h-full object-cover rounded-2xl">
+                            <div v-else class="w-full h-full flex flex-col items-center justify-center bg-gray-50 rounded-2xl">
+                                <i class="fas fa-file-pdf text-4xl text-red-500 mb-2"></i>
+                                <p class="text-[9px] text-gray-400 text-center px-3 font-black uppercase break-all">{{ file.name }}</p>
+                            </div>
+                        </div>
+                        <button @click="removeFile(idx)" class="absolute -top-2 -right-2 bg-black text-white w-7 h-7 rounded-full text-xs flex items-center justify-center shadow-lg"><i class="fas fa-times"></i></button>
+                    </div>
+                    <button @click="triggerFileUpload" class="border-2 border-dashed border-gray-200 rounded-[30px] flex flex-col items-center justify-center aspect-[3/4] text-gray-300 hover:border-red-200 hover:text-ferrari transition bg-white/50">
+                        <i class="fas fa-plus-circle text-3xl mb-2"></i>
+                        <span class="text-[10px] font-black uppercase tracking-widest">Upload File</span>
+                    </button>
+                    <input type="file" id="fileInput" class="hidden" @change="handleFileUpload" accept="image/*,application/pdf">
+                </div>
+            </div>
+
+            <!-- Tab: Settings (日期設定) -->
+            <div v-if="activeTab === 'settings'" class="pt-8 px-1">
+                <h2 class="font-black text-2xl italic mb-6 uppercase tracking-tight">Settings</h2>
+                <div class="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100">
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest italic">Trip Start Date</label>
+                            <input type="date" v-model="startDate" class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4 font-bold text-gray-800">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest italic">Trip End Date</label>
+                            <input type="date" v-model="endDate" class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4 font-bold text-gray-800">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Bottom Tab Bar -->
+        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/90 backdrop-blur-xl border-t border-gray-100 px-10 py-5 flex justify-between items-center safe-area-bottom z-50">
+            <button @click="activeTab = 'itinerary'" :class="activeTab === 'itinerary' ? 'text-ferrari' : 'text-gray-300'"><i class="fas fa-calendar-alt text-xl"></i></button>
+            <button @click="activeTab = 'docs'" :class="activeTab === 'docs' ? 'text-ferrari' : 'text-gray-300'"><i class="fas fa-flag-checkered text-xl"></i></button>
+            <button @click="activeTab = 'wallet'" :class="activeTab === 'wallet' ? 'text-ferrari' : 'text-gray-300'"><i class="fas fa-wallet text-xl"></i></button>
+            <button @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'text-ferrari' : 'text-gray-300'"><i class="fas fa-cog text-xl"></i></button>
+        </nav>
+
+        <!-- Modal: Add Item -->
+        <div v-if="showAddModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-[100] p-4">
+            <div class="bg-white w-full rounded-[40px] p-8 shadow-2xl animate-slide-up">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-black italic uppercase tracking-tighter">Add New Plan</h3>
+                    <i @click="showAddModal = false" class="fas fa-times text-gray-300 text-xl cursor-pointer"></i>
+                </div>
+                <div class="space-y-4">
+                    <input v-model="newItem.time" type="time" class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4 font-black">
+                    <input v-model="newItem.activity" type="text" placeholder="活動名稱..." class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4">
+                    <input v-model="newItem.location" type="text" placeholder="地點 (Google Maps)..." class="w-full bg-gray-100 border-none rounded-2xl px-5 py-4">
+                    <button @click="addItem" class="w-full ferrari-red text-white py-5 rounded-[20px] font-black uppercase italic shadow-lg shadow-red-100 mt-4 active:scale-95 transition-transform">Save Event</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const activeTab = ref('itinerary');
+                const selectedDate = ref('2026-09-02');
+                const startDate = ref('2026-09-02');
+                const endDate = ref('2026-09-07');
+                
+                // 工具切換
+                const showCurrency = ref(false);
+                const showTranslate = ref(false);
+
+                // 匯率
+                const exchangeRate = ref(35.2);
+                const eurInput = ref(1);
+
+                // 翻譯
+                const transInput = ref('');
+                const transResult = ref('');
+                const isTranslating = ref(false);
+
+                // 資料存儲
+                const itinerary = ref(JSON.parse(localStorage.getItem('f1_itinerary')) || [
+                    { id: 1, date: '2026-09-06', time: '15:00', activity: 'Italian Grand Prix - Race Day', location: 'Monza Circuit' }
+                ]);
+                const files = ref(JSON.parse(localStorage.getItem('f1_files')) || []);
+                const members = ref(['我', '朋友A']);
+                const expenses = ref([]);
+
+                const showAddModal = ref(false);
+                const newItem = ref({ time: '', activity: '', location: '' });
+
+                // --- 方法 ---
+                const toggleCurrency = () => {
+                    showCurrency.value = !showCurrency.value;
+                    if (showCurrency.value) showTranslate.value = false;
+                };
+
+                const toggleTranslate = () => {
+                    showTranslate.value = !showTranslate.value;
+                    if (showTranslate.value) showCurrency.value = false;
+                };
+
+                const fetchRate = async () => {
+                    try {
+                        const res = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+                        const data = await res.json();
+                        exchangeRate.value = data.rates.TWD.toFixed(1);
+                    } catch (e) { console.log('匯率獲取失敗，使用預設值'); }
+                };
+
+                const translateText = async () => {
+                    if (!transInput.value) return;
+                    isTranslating.value = true;
+                    try {
+                        // 使用 MyMemory API (免費、免 Key)
+                        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(transInput.value)}&langpair=zh-TW|it`);
+                        const data = await res.json();
+                        transResult.value = data.responseData.translatedText;
+                    } catch (e) {
+                        transResult.value = "翻譯系統暫時忙碌";
+                    } finally {
+                        isTranslating.value = false;
+                    }
+                };
+
+                const handleFileUpload = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        files.value.push({ name: file.name, type: file.type, url: event.target.result });
+                        saveData();
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                const triggerFileUpload = () => document.getElementById('fileInput').click();
+                const removeFile = (idx) => { files.value.splice(idx, 1); saveData(); };
+
+                const addItem = () => {
+                    if (newItem.value.time && newItem.value.activity) {
+                        itinerary.value.push({ id: Date.now(), date: selectedDate.value, ...newItem.value });
+                        newItem.value = { time: '', activity: '', location: '' };
+                        showAddModal.value = false;
+                        saveData();
+                    }
+                };
+
+                const allDates = computed(() => {
+                    const dates = [];
+                    let curr = new Date(startDate.value);
+                    while (curr <= new Date(endDate.value)) {
+                        dates.push(curr.toISOString().split('T')[0]);
+                        curr.setDate(curr.getDate() + 1);
+                    }
+                    return dates;
+                });
+
+                const currentDayItems = computed(() => {
+                    return itinerary.value.filter(i => i.date === selectedDate.value)
+                        .sort((a, b) => a.time.localeCompare(b.time));
+                });
+
+                const formatDate = (d, type) => {
+                    const date = new Date(d);
+                    return type === 'MMM' ? date.toLocaleString('en-US', { month: 'short' }) : date.getDate();
+                };
+
+                const saveData = () => {
+                    localStorage.setItem('f1_itinerary', JSON.stringify(itinerary.value));
+                    localStorage.setItem('f1_files', JSON.stringify(files.value));
+                };
+
+                onMounted(() => fetchRate());
+
+                return {
+                    activeTab, selectedDate, allDates, currentDayItems, formatDate, startDate, endDate,
+                    showCurrency, showTranslate, toggleCurrency, toggleTranslate,
+                    exchangeRate, eurInput, transInput, transResult, translateText, isTranslating,
+                    files, triggerFileUpload, handleFileUpload, removeFile,
+                    showAddModal, newItem, addItem, members
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
